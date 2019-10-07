@@ -2,23 +2,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-'''
-torch,torch.nn
-'''
-
 
 class Cnn_model(nn.Module):
     def __init__(self, hidden_dim):
         super().__init__()
+        # self.cnn_5 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=5, stride=2, padding=1)
         self.cnn_3 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3)
         self.cnn_1 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1)
         self.drop = nn.Dropout(0.5)
 
     def forward(self, x):
-        x = x.transpose(1, 2)
+        # (batch,hidden,len)->(batch,len,hidden)
+        x = x.transpose(1, 2) #维度转换
+        # cnn_5 = self.drop(F.relu(self.cnn_5(x))).mean(dim=-1).squeeze(-1)
         cnn_3 = self.drop(F.relu(self.cnn_3(x))).mean(dim=-1).squeeze(-1)
         cnn_1 = self.drop(F.relu(self.cnn_1(x))).mean(dim=-1).squeeze(-1)
+        # cnn_1 = (b,hidden) cnn_2 = (b,hidden)
         cnn_enc = torch.cat([cnn_3, cnn_1], dim=-1)
+        # cnn_enc = (b,hidden*2)
         return cnn_enc
 
 
@@ -46,6 +47,7 @@ class BaseClassification(nn.Module):
                 nn.ReLU(inplace=True),
                 nn.Linear(hidden_dim, hidden_dim * 2) #全连接（维度变化）
             )
+        # 这里是输入维度  如果多加了层数需要在这里改
         self.predict_layer = nn.Sequential(
             nn.Linear(hidden_dim * 4, hidden_dim *2),  #二分类
             nn.ReLU(inplace=True),
@@ -65,6 +67,8 @@ class BaseClassification(nn.Module):
         x1, x2 = self.drop(self.embedding(x1)), self.drop(self.embedding(x2))
         #把词向量送进全连接 编码
         x1, x2 = self.encode_layer(x1), self.encode_layer(x2)
+        # output , (hidden , state) = LSTM(x1)
+        # output
 
         if self.mode in ["lstm", 'gru']:
             x1, x2 = x1[0], x2[0]

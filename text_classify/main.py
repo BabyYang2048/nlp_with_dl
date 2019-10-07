@@ -37,7 +37,7 @@ def train(model, train_loader, valid_loader, loss_func, optimizer, epochs=5):
         score = evaluate(model, valid_loader, ep)
         if score > best_score:
             best_score = score
-            torch.save(model.state_dict(),'./')
+            torch.save(model.state_dict(),'./moxingCnn')
         print("BEST SCORE:", best_score)
 
 
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     train_loader, valid_loader = get_dataloader()
     # 创建模型
     print("创建模型")
-    model = BaseClassification(len(train_loader.dataset.vocab), 128, mode="linear")
+    model = BaseClassification(len(train_loader.dataset.vocab), 128, mode="gru")
     model.to(device)
     # 定义损失函数
     print("定义损失") #交叉熵损失函数
@@ -75,6 +75,6 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
     # 训练模型
     print("训练模型")
-    train(model, train_loader, valid_loader, loss_func, optimizer, epochs=30)
+    train(model, train_loader, valid_loader, loss_func, optimizer, epochs=10)
 
 

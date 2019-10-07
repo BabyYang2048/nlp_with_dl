@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 #########################################################################################################
 # 数据处理
 #########################################################################################################
@@ -36,9 +36,9 @@ class Vocab:
     """
 
     def __init__(self, name):
-        self.name = name
+        self.name = name        #上下文的字典拆开
         self.word2index = {}
-        self.word2count = {}
+        self.word2count = {}    #统计词频
         self.index2word = {0: "PAD", 1: "UNK", 2: "SOS", 3: "EOS"}
         self.n_words = 4
 
@@ -70,7 +70,7 @@ def read_data(first_txt, second_txt):
     first_lines = open(first_txt, encoding='utf-8').read().strip().split('\n')
     second_lines = open(second_txt, encoding='utf-8').read().strip().split("\n")
 
-    # 合并数据
+    # 合并数据!!!(cool)
     pairs = [[f, s] for f, s in zip(first_lines, second_lines)]
 
     # 创建对应词典
@@ -139,13 +139,13 @@ class EncoderRNN(nn.Module):
         self.embedding = nn.Embedding(input_size, hidden_size)  # 上联嵌入层
         self.gru = nn.GRU(hidden_size, hidden_size)     # GRU
 
-    def forward(self, input, hidden):
+    def forward(self, input, hidden): #-1 是自己去算的
         embedded = self.embedding(input).view(1, 1, -1)     # 调整数据维度为 (1, 1, hidden_size)
         output = embedded
         output, hidden = self.gru(output, hidden)     # GRU编码
         return output, hidden
 
-    def init_hidden(self):
+    def init_hidden(self):  #初始化隐藏状态
         return torch.zeros(1, 1, self.hidden_size, device=device)
 
 
@@ -160,8 +160,8 @@ class AttnDecoderRNN(nn.Module):
         self.dropout_p = dropout_p  # dropout_rate
         self.max_length = max_length    # 最大文本长度
 
-        self.embedding = nn.Embedding(self.output_size, self.hidden_size)   # 下联嵌入层
-        # Attention Module
+        self.embedding = nn.Embedding(self.output_size, self.hidden_size)   # 下联嵌入层（词典大小，隐藏层维度）
+        # Attention Module  现在的attention就是两个全连接
         self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
         self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.dropout = nn.Dropout(self.dropout_p)   # Dropout 防止过拟合
@@ -174,9 +174,10 @@ class AttnDecoderRNN(nn.Module):
         embedded = self.dropout(embedded)   # Dropout
 
         # 计算注意力权重
+        # atten_weights 是15维！！！
         attn_weights = F.softmax(
             self.attn(torch.cat((embedded[0], hidden[0]), 1)), dim=1)
-        # 加权求和
+        # 加权求和！！！
         attn_applied = torch.bmm(attn_weights.unsqueeze(0),
                                  encoder_outputs.unsqueeze(0))
         # 拼接
@@ -200,7 +201,7 @@ class AttnDecoderRNN(nn.Module):
 
 def indexes_from_sentence(lang, sentence):
     """
-        将句子中的字转换为索引
+            将句子中的字转换为索引
     :param lang:    词典
     :param sentence:    句子
     :return:    索引构成的句子
@@ -232,7 +233,7 @@ def tensors_from_pair(pair):
 
 
 #########################################################################################################
-# 时间格式化
+# 时间格式化   为了打印输出 非重点
 #########################################################################################################
 
 def as_minutes(s):
