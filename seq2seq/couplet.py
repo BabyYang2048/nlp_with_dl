@@ -15,8 +15,9 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
+# device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 #########################################################################################################
 # 数据处理
 #########################################################################################################
@@ -36,27 +37,36 @@ class Vocab:
     """
 
     def __init__(self, name):
-        self.name = name        #上下文的字典拆开
+        self.name = name  # 上下文的字典拆开
         self.word2index = {}
-        self.word2count = {}    #统计词频
+        self.word2count = {}  # 统计词频
         self.index2word = {0: "PAD", 1: "UNK", 2: "SOS", 3: "EOS"}
         self.n_words = 4
 
     def add_sentence(self, sentence):
+        """
+        按句子把词加入词库里
+        :param sentence:按行读取的句子
+        :return:
+        """
         for word in sentence.split(' '):
             self.add_word(word)
 
     def add_word(self, word):
+        """
+        :param word:
+        :return:
+        """
         if word not in self.word2index:
-            self.word2index[word] = self.n_words
-            self.word2count[word] = 1
+            self.word2index[word] = self.n_words  # self.n_words 是词典中词的总数
+            self.word2count[word] = 1  # word2count 是词频
             self.index2word[self.n_words] = word
             self.n_words += 1
         else:
             self.word2count[word] += 1
 
     def __len__(self):
-        return len(self.index2word)
+        return len(self.index2word)  # index2word 和n_words 好像是一样的诶？
 
 
 def read_data(first_txt, second_txt):
@@ -70,10 +80,11 @@ def read_data(first_txt, second_txt):
     first_lines = open(first_txt, encoding='utf-8').read().strip().split('\n')
     second_lines = open(second_txt, encoding='utf-8').read().strip().split("\n")
 
-    # 合并数据!!!(cool)
+    # 合并数据!!!(cool)  [f,s]
     pairs = [[f, s] for f, s in zip(first_lines, second_lines)]
 
     # 创建对应词典
+    # 这样调用Vacab之后，上下联的词典就对应创建了？？内容也都在嘛？？
     input_vocab = Vocab("上联")
     output_vocab = Vocab("下联")
 
@@ -82,17 +93,17 @@ def read_data(first_txt, second_txt):
 
 def filter_pair(p):
     """
-        根据最大长度，过滤对联
-    :param p: 一副对联
+    根据最大长度，过滤对联 MAX_LENGTH=15
+    :param p: 一副对联  p[0]上联 p[1]下联
     :return:  True or False
     """
     return len(p[0].split(' ')) < MAX_LENGTH and \
-           len(p[1].split(' ')) < MAX_LENGTH
+        len(p[1].split(' ')) < MAX_LENGTH
 
 
 def filter_pairs(pairs):
     """
-        过滤全部的对联
+    过滤全部的对联
     :param pairs:   全部对联
     :return:    长度过滤后的对联
     """
@@ -101,16 +112,23 @@ def filter_pairs(pairs):
 
 def prepare_data(lang1, lang2):
     """
-        处理数据，读取，过滤，创建词典等
+    处理数据，读取，过滤，创建词典等
     :param lang1:   上联文件路径
     :param lang2:   下联文件路径
     :return:    上联词典， 下联词典， 全部对联
     """
+    # Loading 效果
+    print("Loading", end="")
+    for i in range(10):
+        print(".", end='', flush=True)
+        time.sleep(0.5)
     input_lang, output_lang, pairs = read_data(lang1, lang2)
-    print("Read %s sentence pairs" % len(pairs))
+    print("\nRead %s sentence pairs" % len(pairs))
     pairs = filter_pairs(pairs)
     print("Trimmed to %s sentence pairs" % len(pairs))
     print("Counting words...")
+    # 调用read_data方法只是创建了两个字典，
+    # 然后调用add_sentence方法后往字典中加入了数据
     for pair in pairs:
         input_lang.add_sentence(pair[0])
         output_lang.add_sentence(pair[1])
@@ -120,75 +138,71 @@ def prepare_data(lang1, lang2):
     return input_lang, output_lang, pairs
 
 
-# 处理数据
+# 处理数据 上联词典 下联词典 全部对联
 ipt_vocab, opt_vocab, sen_pairs = prepare_data(first_txt_path, second_txt_path)
+# 随机打印一副对联 eg. ['高 考 考 高 可 中 高 ', '制 约 约 制 需 更 制 ']
 print(random.choice(sen_pairs))
 
-#########################################################################################################
-# 定义模型
-#########################################################################################################
 
-
+#########################################################################################################
+# 定义模型 Encoder->Decoder
+#########################################################################################################
 class EncoderRNN(nn.Module):
     """
-        RNN-based Encoder
+    RNN-based Encoder
     """
     def __init__(self, input_size, hidden_size):
+        """
+        构造方法
+        :param input_size: 输入层大小
+        :param hidden_size: 隐藏层大小
+        """
         super(EncoderRNN, self).__init__()
         self.hidden_size = hidden_size  # 隐层维度
         self.embedding = nn.Embedding(input_size, hidden_size)  # 上联嵌入层
-        self.gru = nn.GRU(hidden_size, hidden_size)     # GRU
+        self.gru = nn.GRU(hidden_size, hidden_size)  # GRU
 
-    def forward(self, input, hidden): #-1 是自己去算的
-        embedded = self.embedding(input).view(1, 1, -1)     # 调整数据维度为 (1, 1, hidden_size)
+    def forward(self, input, hidden):  # 向前传播，input，hidden为向前传播的两个参数
+        embedded = self.embedding(input).view(1, 1, -1)  # 调整数据维度为 (1, 1, hidden_size) # -1 是自己去算的 #有点不能明白还是
         output = embedded
-        output, hidden = self.gru(output, hidden)     # GRU编码
+        output, hidden = self.gru(output, hidden)  # GRU编码
         return output, hidden
 
-    def init_hidden(self):  #初始化隐藏状态
+    def init_hidden(self):  # 初始化隐藏状态
         return torch.zeros(1, 1, self.hidden_size, device=device)
 
 
 class AttnDecoderRNN(nn.Module):
     """
-        RNN-based Decoder with Attention
+    RNN-based Decoder with Attention
     """
     def __init__(self, hidden_size, output_size, dropout_p=0.1, max_length=MAX_LENGTH):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size  # 隐层维度
         self.output_size = output_size  # 输出维度
         self.dropout_p = dropout_p  # dropout_rate
-        self.max_length = max_length    # 最大文本长度
-
-        self.embedding = nn.Embedding(self.output_size, self.hidden_size)   # 下联嵌入层（词典大小，隐藏层维度）
-        # Attention Module  现在的attention就是两个全连接
-        self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
-        self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
-        self.dropout = nn.Dropout(self.dropout_p)   # Dropout 防止过拟合
-        self.gru = nn.GRU(self.hidden_size, self.hidden_size)   # GRU
-        self.out = nn.Linear(self.hidden_size, self.output_size)    # 输出层
+        self.max_length = max_length  # 最大文本长度
+        self.embedding = nn.Embedding(self.output_size, self.hidden_size)  # 下联嵌入层（词典大小，隐藏层维度）
+        # Attention Module  现在的attention就是两个全连接，【xy : attention这里可以再优化！！】
+        self.attn = nn.Linear(self.hidden_size * 2, self.max_length)  # 输入维度：隐藏层大小*2 输出维度：15
+        self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)  # 输入维度：隐藏层大小*2 输出维度：隐藏层大小
+        self.dropout = nn.Dropout(self.dropout_p)  # Dropout 防止过拟合
+        self.gru = nn.GRU(self.hidden_size, self.hidden_size)  # GRU  输入维度：隐藏层大小 输出维度：隐藏层大小
+        self.out = nn.Linear(self.hidden_size, self.output_size)  # 输出层 输入维度：隐藏层大小 输出维度：output大小
 
     def forward(self, input, hidden, encoder_outputs):
-
-        embedded = self.embedding(input).view(1, 1, -1)     # 调整数据维度为 (1, 1, hidden_size)
-        embedded = self.dropout(embedded)   # Dropout
-
-        # 计算注意力权重
-        # atten_weights 是15维！！！
-        attn_weights = F.softmax(
-            self.attn(torch.cat((embedded[0], hidden[0]), 1)), dim=1)
-        # 加权求和！！！
-        attn_applied = torch.bmm(attn_weights.unsqueeze(0),
-                                 encoder_outputs.unsqueeze(0))
-        # 拼接
-        output = torch.cat((embedded[0], attn_applied[0]), 1)
-        # 映射
-        output = self.attn_combine(output).unsqueeze(0)
+        embedded = self.embedding(input).view(1, 1, -1)  # 调整数据维度为 (1, 1, hidden_size)
+        embedded = self.dropout(embedded)  # Dropout 防止过拟合
+        # 归一化计算注意力权重  attn_weights 是15维！！！
+        # 把embedded[0]和hidden[0] 按维数1拼接(即横着拼接)  如果按维数0拼接，则是竖着拼
+        attn_weights = F.softmax(self.attn(torch.cat((embedded[0], hidden[0]), 1)), dim=1)
+        # bmm(batch matrix multiply)批处理矩阵相乘
+        attn_applied = torch.bmm(attn_weights.unsqueeze(0), encoder_outputs.unsqueeze(0))  # 加权求和！！！
+        output = torch.cat((embedded[0], attn_applied[0]), 1)  # 拼接
+        output = self.attn_combine(output).unsqueeze(0)  # 映射
         output = F.relu(output)
-
-        output, hidden = self.gru(output, hidden)   # GRU解码
-
-        output = F.log_softmax(self.out(output[0]), dim=1)  # 预测结果
+        output, hidden = self.gru(output, hidden)  # GRU解码
+        output = F.log_softmax(self.out(output[0]), dim=1)  # 预测结果 log_softmax 在softmax的结果上再做多一次log运算
         return output, hidden, attn_weights
 
     def init_hidden(self):
@@ -196,39 +210,39 @@ class AttnDecoderRNN(nn.Module):
 
 
 #########################################################################################################
-# 数据转换 -> tensor
+# 数据转换 -> tensor  因为在模型中数据是通过tensor流通的
 #########################################################################################################
 
-def indexes_from_sentence(lang, sentence):
+def indexes_from_sentence(vocab, sentence):
     """
-            将句子中的字转换为索引
-    :param lang:    词典
+    将句子中的字转换为索引
+    :param vocab:        词典
     :param sentence:    句子
-    :return:    索引构成的句子
+    :return: 索引构成的句子
     """
-    return [lang.word2index[word] for word in sentence.split(' ')]
+    return [vocab.word2index[word] for word in sentence.split(' ')]
 
 
-def tensor_from_sentence(lang, sentence):
+def tensor_from_sentence(vocab, sentence):
     """
-        将句子转换为索引，增加终止符号后转换为tensor
-    :param lang:    词典
+    将句子转换为索引，增加终止符号后转换为tensor
+    :param vocab:         词典
     :param sentence:    句子
     :return:    tensor
     """
-    indexes = indexes_from_sentence(lang, sentence)
+    indexes = indexes_from_sentence(vocab, sentence)
     indexes.append(EOS_token)
     return torch.tensor(indexes, dtype=torch.long, device=device).view(-1, 1)
 
 
 def tensors_from_pair(pair):
     """
-        转换一副无情对为tensor
+    转换一副无情对为tensor
     :param pair:    一副无情对
     :return:    tensor
     """
     input_tensor = tensor_from_sentence(ipt_vocab, pair[0])
-    target_tensor = tensor_from_sentence(opt_vocab, pair[1])
+    target_tensor = tensor_from_sentence(opt_vocab, pair[1])  # target 目标
     return (input_tensor, target_tensor)
 
 
@@ -269,50 +283,52 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer,
     :param max_length:  最大文本长度
     :return:    损失值
     """
-    encoder_hidden = encoder.init_hidden()      # 初始化编码器的初始状态
+    encoder_hidden = encoder.init_hidden()  # 初始化编码器的初始状态
 
-    encoder_optimizer.zero_grad()   # 编码器梯度归零
-    decoder_optimizer.zero_grad()   # 解码器梯度归零
+    encoder_optimizer.zero_grad()  # 编码器梯度归零
+    decoder_optimizer.zero_grad()  # 解码器梯度归零
 
-    input_length = input_tensor.size(0)     # 上联长度
-    target_length = target_tensor.size(0)   # 下联长度
+    input_length = input_tensor.size(0)  # 上联长度
+    target_length = target_tensor.size(0)  # 下联长度
 
-    encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)   # 存储输出， (max_length, hidden_size)
+    # 存储输出， (max_length, hidden_size)
+    encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
 
-    loss = 0    # 记录损失
+    loss = 0  # 记录损失
 
-    for ei in range(input_length):      # 根据上联长度遍历数据
-        encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_hidden)      # 编码
+    for ei in range(input_length):  # 根据上联长度遍历数据
+        encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_hidden)  # 编码
         encoder_outputs[ei] = encoder_output[0, 0]  # 存储输出至encoder_outputs
 
-    decoder_input = torch.tensor([[SOS_token]], device=device)      # 设置Decoder输入，SOS表示开始解码
+    decoder_input = torch.tensor([[SOS_token]], device=device)  # 设置Decoder输入，SOS表示开始解码
 
-    decoder_hidden = encoder_hidden     # 将解码器初始的hidden设置为编码器的最终hidden
+    decoder_hidden = encoder_hidden  # 将解码器初始的hidden设置为编码器的最终hidden
 
     teacher_forcing_ratio = 0.5  # 强制学习的概率
-    use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False    # 判断是否需要强制学习
+    use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False  # 判断是否需要强制学习
 
     if use_teacher_forcing:
         # 将目标字作为下次预测的输入
-        for di in range(target_length):     # 循环解码
+        for di in range(target_length):  # 循环解码
             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-            loss += criterion(decoder_output, target_tensor[di])    # 计算损失
+            loss += criterion(decoder_output, target_tensor[di])  # 计算损失
             decoder_input = target_tensor[di]  # 强制替换
     else:
         # 将预测结果作为下次的输入
         for di in range(target_length):
             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-            topv, topi = decoder_output.topk(1)     # 取top1的结果
+            topv, topi = decoder_output.topk(1)  # 取top1的结果
             decoder_input = topi.squeeze().detach()  # 取出预测结果
-            loss += criterion(decoder_output, target_tensor[di])    # 计算损失
-            if decoder_input.item() == EOS_token:   # 如果读取到EOS则终止解码
+            loss += criterion(decoder_output, target_tensor[di])  # 计算损失
+            if decoder_input.item() == EOS_token:  # 如果读取到EOS则终止解码
                 break
 
-    loss.backward()     # 损失反向传播
+    loss.backward()  # 损失反向传播
 
-    encoder_optimizer.step()    # 更新编码器参数
-    decoder_optimizer.step()    # 更新解码器参数
+    encoder_optimizer.step()  # 更新编码器参数
+    decoder_optimizer.step()  # 更新解码器参数
 
+    # loss.item() item()方法用于将一个零维张量转换成浮点数
     return loss.item() / target_length
 
 
@@ -327,38 +343,38 @@ def train_iters(encoder, decoder, n_iters, print_every=100, plot_every=100, lear
     :param learning_rate:   学习率
     :return:    None
     """
-    start = time.time()     # 记录时间
-    plot_losses = []        # 记录损失
+    start = time.time()  # 记录时间
+    plot_losses = []  # 记录损失
     print_loss_total = 0
     plot_loss_total = 0
 
-    encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate)      # 定义编码器优化器
-    decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate)      # 定义解码器优化器
+    encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate)  # 定义编码器优化器
+    decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate)  # 定义解码器优化器
     training_pairs = [tensors_from_pair(random.choice(sen_pairs)) for i in range(n_iters)]  # 生成n_iters条数据
-    criterion = nn.NLLLoss()    # 定义损失函数
+    criterion = nn.NLLLoss()  # 定义损失函数
 
-    for iter in range(1, n_iters + 1):      # 迭代训练
-        training_pair = training_pairs[iter - 1]    # 取数据
-        input_tensor = training_pair[0]     # 上联
-        target_tensor = training_pair[1]    # 下联
+    for iter in range(1, n_iters + 1):  # 迭代训练
+        training_pair = training_pairs[iter - 1]  # 取数据
+        input_tensor = training_pair[0]  # 上联
+        target_tensor = training_pair[1]  # 下联
 
         loss = train(input_tensor, target_tensor, encoder,
                      decoder, encoder_optimizer, decoder_optimizer, criterion)  # 训练，得到损失
         print_loss_total += loss
         plot_loss_total += loss
 
-        if iter % print_every == 0:     # 迭代至打印次数，打印日志
+        if iter % print_every == 0:  # 迭代至打印次数，打印日志
             print_loss_avg = print_loss_total / print_every
             print_loss_total = 0
             print('%s (%d %d%%) %.4f' % (time_since(start, iter / n_iters),
                                          iter, iter / n_iters * 100, print_loss_avg))
 
-        if iter % plot_every == 0:      # 迭代至绘图次数，记录损失
+        if iter % plot_every == 0:  # 迭代至绘图次数，记录损失
             plot_loss_avg = plot_loss_total / plot_every
             plot_losses.append(plot_loss_avg)
             plot_loss_total = 0
 
-    show_plot(plot_losses)      # 绘制损失图像
+    show_plot(plot_losses)  # 绘制损失图像
 
 
 def show_plot(points):
@@ -374,42 +390,35 @@ def show_plot(points):
 #########################################################################################################
 # 评估模型
 #########################################################################################################
-
-
 def evaluate(encoder, decoder, sentence, max_length=MAX_LENGTH):
     """
-        评估结果
+    评估结果
     :param encoder:     编码器
     :param decoder:     解码器
-    :param sentence:    预测句子
+    :param sentence:    要预测下联的句子
     :param max_length:  最大文本长度
     :return:    结果
     """
-    with torch.no_grad():   # 不需要计算梯度
-        input_tensor = tensor_from_sentence(ipt_vocab, sentence)    # 将上联转换为tensor
-        input_length = input_tensor.size()[0]   # 得到文本长度
+    with torch.no_grad():  # 不需要计算梯度
+        input_tensor = tensor_from_sentence(ipt_vocab, sentence)  # 将上联转换为tensor
+        input_length = input_tensor.size()[0]  # 得到文本长度
         encoder_hidden = encoder.init_hidden()  # 初始化编码器隐层
+        encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)  # 记录编码器输出
 
-        encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)   # 记录编码器输出
-
-        for ei in range(input_length):      # 同上
-            encoder_output, encoder_hidden = encoder(input_tensor[ei],
-                                                     encoder_hidden)
+        for ei in range(input_length):  # 同上
+            encoder_output, encoder_hidden = encoder(input_tensor[ei],encoder_hidden)
             encoder_outputs[ei] += encoder_output[0, 0]
 
         decoder_input = torch.tensor([[SOS_token]], device=device)  # SOS
-
         decoder_hidden = encoder_hidden
-
         decoded_words = []
         decoder_attentions = torch.zeros(max_length, max_length)
 
         # 解码阶段不再需要判断是否需要强制学习
         # 没有target标签，无法强制学习
         # 直接选择预测结果作为下个输入
-        for di in range(max_length):    # 同上
-            decoder_output, decoder_hidden, decoder_attention = decoder(
-                decoder_input, decoder_hidden, encoder_outputs)
+        for di in range(max_length):  # 同上
+            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
             decoder_attentions[di] = decoder_attention.data
             topv, topi = decoder_output.data.topk(1)
             if topi.item() == EOS_token:
@@ -417,7 +426,6 @@ def evaluate(encoder, decoder, sentence, max_length=MAX_LENGTH):
                 break
             else:
                 decoded_words.append(opt_vocab.index2word[topi.item()])
-
             decoder_input = topi.squeeze().detach()
 
         return decoded_words, decoder_attentions[:di + 1]
@@ -441,9 +449,12 @@ def evaluate_randomly(encoder, decoder, n=10):
         print('')
 
 
+#########################################################################################################
+# main方法
+#########################################################################################################
 if __name__ == '__main__':
-    hidden_size = 64    # 隐层维度
-    encoder1 = EncoderRNN(ipt_vocab.n_words, hidden_size).to(device)    # 编码器
-    attn_decoder1 = AttnDecoderRNN(hidden_size, opt_vocab.n_words, dropout_p=0.1).to(device)    # 解码器
-    train_iters(encoder1, attn_decoder1, 50000, print_every=1000)     # 开始训练
+    hidden_size = 64  # 隐层维度
+    encoder1 = EncoderRNN(ipt_vocab.n_words, hidden_size).to(device)  # 编码器
+    attn_decoder1 = AttnDecoderRNN(hidden_size, opt_vocab.n_words, dropout_p=0.1).to(device)  # 解码器
+    train_iters(encoder1, attn_decoder1, 50000, print_every=1000)  # 开始训练
     evaluate_randomly(encoder1, attn_decoder1)  # 评估

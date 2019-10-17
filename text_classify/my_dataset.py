@@ -53,10 +53,10 @@ def get_dataloader(batch_size=64):
     train_data = pickle.load(open(train_data_path, "rb"))
     valid_data = pickle.load(open(valid_data_path, "rb"))
     vocab_data = pickle.load(open(vocab_data_path, "rb"))
-    ##todo
+    ## todo
     train_loader = DataLoader(DiseaseQuestion(train_data, vocab_data),
                               batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(DiseaseQuestion(valid_data, vocab_data),
                               batch_size=batch_size, shuffle=False)
-    ##todo
+    ## todo
     return train_loader, valid_loader
